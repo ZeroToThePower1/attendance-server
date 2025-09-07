@@ -1,0 +1,105 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# ================================
+# Operating System Generated Files
+# ================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ================================
+# Runtime and Log Files
+# ================================
+# Node.js runtime and npm debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# ================================
+# Dependencies (Node.js)
+# ================================
+# Dependencies - you should NOT ignore `node_modules` if you are deploying to Render,
+# as Render will run `npm install` for you. However, it's standard to ignore it locally.
+node_modules/
+/node_modules
+*/node_modules
+
+# Optional repositories cache directory
+.npmrc
+
+# ================================
+# Environment Variables & Secrets
+# ================================
+# CRITICAL: Never commit your environment files!
+# They often contain passwords, API keys, and other secrets.
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*
+
+# ================================
+# Build Outputs & Coverage Reports
+# ================================
+# Build directories for projects that might have a frontend (like React, Vite, etc.)
+/dist
+/build
+/out
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+.nyc_output
+
+# ================================
+# IDE and Editor Files
+# ================================
+# Visual Studio Code
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ================================
+# YOUR SERVER-SIDE DATA FILES
+# ================================
+# THIS IS THE MOST IMPORTANT PART FOR YOU!
+# Your server creates a 'data' folder to store JSON files.
+# You MUST ignore this to avoid committing real user data to Git.
+/data/
+/data/*
+!/data/.gitkeep # (Optional: Keeps the folder in Git but ignores its contents)
+
+# ================================
+# Miscellaneous
+# ================================
+# Temporary folders
+tmp/
+temp/
+
+# Optional 'npm pack' files
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
