@@ -1,273 +1,233 @@
 const express = require('express');
-const fs = require('fs');
+const mongoose = require('mongoose');
 const path = require('path');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
+
+// MongoDB connection
+const mongoURI = process.env.MONGO_URI || 'mongodb+srv://chaudharsami324_db_user:VC1rvhRJSSTqHqoE@cluster0.egub0q2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+
+mongoose.connect(mongoURI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB connected successfully'))
+.catch(err => console.error('MongoDB connection error:', err));
+
+// MongoDB Schemas
+const studentSchema = new mongoose.Schema({
+  name: String,
+  studentId: String,
+  class: String
+});
+
+const attendanceSchema = new mongoose.Schema({
+  date: String,
+  records: [{
+    name: String,
+    status: String,
+    timestamp: String
+  }]
+});
+
+const Student = mongoose.model('Student', studentSchema);
+const Attendance = mongoose.model('Attendance', attendanceSchema);
 
 app.use(express.json());
 
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
 });
 
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir);
-}
-
 // Get all students
-app.get('/api/students', (req, res) => {
-    const filePath = path.join(dataDir, 'students.json');
-    
-    if (fs.existsSync(filePath)) {
-        fs.readFile(filePath, 'utf8', (err, data) => {
-            if (err) {
-                console.error('Error reading students:', err);
-                return res.status(500).json({ error: 'Error reading students data' });
-            }
-            res.json(JSON.parse(data));
-        });
-    } else {
-        res.json([]); 
-    }
+app.get('/api/students', async (req, res) => {
+  try {
+    const students = await Student.find();
+    res.json(students);
+  } catch (err) {
+    console.error('Error reading students:', err);
+    res.status(500).json({ error: 'Error reading students data' });
+  }
 });
 
 // Save students
-app.post('/api/students', (req, res) => {
+app.post('/api/students', async (req, res) => {
+  try {
     const students = req.body;
-    const filePath = path.join(dataDir, 'students.json');
     
     if (!Array.isArray(students)) {
-        return res.status(400).json({ error: 'Students data should be an array' });
+      return res.status(400).json({ error: 'Students data should be an array' });
     }
+
+    // Clear existing students and insert new ones
+    await Student.deleteMany({});
+    const result = await Student.insertMany(students);
     
-    fs.writeFile(filePath, JSON.stringify(students, null, 2), (err) => {
-        if (err) {
-            console.error('Error saving students:', err);
-            return res.status(500).json({ error: 'Error saving students data' });
-        }
-        res.json({ success: true, message: 'Students saved successfully', count: students.length });
+    res.json({ 
+      success: true, 
+      message: 'Students saved successfully', 
+      count: result.length 
     });
+  } catch (err) {
+    console.error('Error saving students:', err);
+    res.status(500).json({ error: 'Error saving students data' });
+  }
 });
 
 // Save attendance
-app.post('/api/attendance', (req, res) => {
+app.post('/api/attendance', async (req, res) => {
+  try {
     const attendanceData = req.body;
-    const filePath = path.join(dataDir, `attendance-${attendanceData.date}.json`);
     
     if (!attendanceData.date || !attendanceData.records) {
-        return res.status(400).json({ error: 'Date and records are required' });
+      return res.status(400).json({ error: 'Date and records are required' });
     }
-    
-    fs.writeFile(filePath, JSON.stringify(attendanceData, null, 2), (err) => {
-        if (err) {
-            console.error('Error saving attendance:', err);
-            return res.status(500).json({ error: 'Error saving attendance data' });
-        }
-        res.json({ success: true, message: 'Attendance saved successfully', date: attendanceData.date });
-    });
-});
 
-// NEW: Get all attendance dates (for filter dropdown)
-app.get('/api/attendance/dates', (req, res) => {
-    fs.readdir(dataDir, (err, files) => {
-        if (err) {
-            console.error('Error reading data directory:', err);
-            return res.status(500).json({ error: 'Error reading attendance data' });
-        }
-        
-        const attendanceFiles = files.filter(file => file.startsWith('attendance-') && file.endsWith('.json'));
-        const dates = attendanceFiles.map(file => file.replace('attendance-', '').replace('.json', ''));
-        
-        res.json(dates.sort().reverse()); // Return dates sorted from newest to oldest
-    });
-});
-
-// NEW: Get attendance for a specific date
-app.get('/api/attendance/:date', (req, res) => {
-    const date = req.params.date;
-    const filePath = path.join(dataDir, `attendance-${date}.json`);
+    // Check if attendance for this date already exists
+    const existingAttendance = await Attendance.findOne({ date: attendanceData.date });
     
-    if (fs.existsSync(filePath)) {
-        fs.readFile(filePath, 'utf8', (err, data) => {
-            if (err) {
-                console.error('Error reading attendance:', err);
-                return res.status(500).json({ error: 'Error reading attendance data' });
-            }
-            res.json(JSON.parse(data));
-        });
+    if (existingAttendance) {
+      // Update existing attendance
+      existingAttendance.records = attendanceData.records;
+      await existingAttendance.save();
     } else {
-        res.status(404).json({ error: 'Attendance record not found for this date' });
+      // Create new attendance record
+      const attendance = new Attendance(attendanceData);
+      await attendance.save();
     }
-});
-
-// NEW: Get all attendance records with summary
-app.get('/api/attendance', (req, res) => {
-    fs.readdir(dataDir, (err, files) => {
-        if (err) {
-            console.error('Error reading data directory:', err);
-            return res.status(500).json({ error: 'Error reading attendance data' });
-        }
-        
-        const attendanceFiles = files.filter(file => file.startsWith('attendance-') && file.endsWith('.json'));
-        const attendanceRecords = [];
-        
-        // If no attendance files found
-        if (attendanceFiles.length === 0) {
-            return res.json([]);
-        }
-        
-        // Read each attendance file and create a summary
-        let filesProcessed = 0;
-        attendanceFiles.forEach(file => {
-            const filePath = path.join(dataDir, file);
-            fs.readFile(filePath, 'utf8', (err, data) => {
-                if (err) {
-                    console.error('Error reading attendance file:', err);
-                } else {
-                    try {
-                        const attendanceData = JSON.parse(data);
-                        const presentCount = attendanceData.records.filter(r => r.status === 'Present').length;
-                        const absentCount = attendanceData.records.filter(r => r.status === 'Absent').length;
-                        
-                        attendanceRecords.push({
-                            date: attendanceData.date,
-                            totalStudents: attendanceData.records.length,
-                            present: presentCount,
-                            absent: absentCount,
-                            attendanceRate: Math.round((presentCount / attendanceData.records.length) * 100)
-                        });
-                    } catch (parseError) {
-                        console.error('Error parsing attendance file:', parseError);
-                    }
-                }
-                
-                filesProcessed++;
-                if (filesProcessed === attendanceFiles.length) {
-                    // Sort by date (newest first)
-                    attendanceRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    res.json(attendanceRecords);
-                }
-            });
-        });
-    });
-});
-
-// NEW: Search attendance records by student name
-app.get('/api/attendance/search/:studentName', (req, res) => {
-    const studentName = req.params.studentName.toLowerCase();
     
-    fs.readdir(dataDir, (err, files) => {
-        if (err) {
-            console.error('Error reading data directory:', err);
-            return res.status(500).json({ error: 'Error reading attendance data' });
-        }
-        
-        const attendanceFiles = files.filter(file => file.startsWith('attendance-') && file.endsWith('.json'));
-        const studentRecords = [];
-        
-        // If no attendance files found
-        if (attendanceFiles.length === 0) {
-            return res.json([]);
-        }
-        
-        // Search through each attendance file
-        let filesProcessed = 0;
-        attendanceFiles.forEach(file => {
-            const filePath = path.join(dataDir, file);
-            fs.readFile(filePath, 'utf8', (err, data) => {
-                if (err) {
-                    console.error('Error reading attendance file:', err);
-                } else {
-                    try {
-                        const attendanceData = JSON.parse(data);
-                        const studentRecord = attendanceData.records.find(r => 
-                            r.name.toLowerCase().includes(studentName)
-                        );
-                        
-                        if (studentRecord) {
-                            studentRecords.push({
-                                date: attendanceData.date,
-                                name: studentRecord.name,
-                                status: studentRecord.status,
-                                timestamp: studentRecord.timestamp
-                            });
-                        }
-                    } catch (parseError) {
-                        console.error('Error parsing attendance file:', parseError);
-                    }
-                }
-                
-                filesProcessed++;
-                if (filesProcessed === attendanceFiles.length) {
-                    // Sort by date (newest first)
-                    studentRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    res.json(studentRecords);
-                }
-            });
-        });
+    res.json({ 
+      success: true, 
+      message: 'Attendance saved successfully', 
+      date: attendanceData.date 
     });
+  } catch (err) {
+    console.error('Error saving attendance:', err);
+    res.status(500).json({ error: 'Error saving attendance data' });
+  }
 });
 
-// NEW: Get attendance statistics
-app.get('/api/attendance/stats/overview', (req, res) => {
-    fs.readdir(dataDir, (err, files) => {
-        if (err) {
-            console.error('Error reading data directory:', err);
-            return res.status(500).json({ error: 'Error reading attendance data' });
-        }
-        
-        const attendanceFiles = files.filter(file => file.startsWith('attendance-') && file.endsWith('.json'));
-        
-        // If no attendance files found
-        if (attendanceFiles.length === 0) {
-            return res.json({
-                totalRecords: 0,
-                averageAttendance: 0,
-                totalClasses: 0
-            });
-        }
-        
-        // Calculate statistics
-        let totalPresent = 0;
-        let totalStudents = 0;
-        
-        let filesProcessed = 0;
-        attendanceFiles.forEach(file => {
-            const filePath = path.join(dataDir, file);
-            fs.readFile(filePath, 'utf8', (err, data) => {
-                if (err) {
-                    console.error('Error reading attendance file:', err);
-                } else {
-                    try {
-                        const attendanceData = JSON.parse(data);
-                        const presentCount = attendanceData.records.filter(r => r.status === 'Present').length;
-                        
-                        totalPresent += presentCount;
-                        totalStudents += attendanceData.records.length;
-                    } catch (parseError) {
-                        console.error('Error parsing attendance file:', parseError);
-                    }
-                }
-                
-                filesProcessed++;
-                if (filesProcessed === attendanceFiles.length) {
-                    const averageAttendance = totalStudents > 0 ? Math.round((totalPresent / totalStudents) * 100) : 0;
-                    
-                    res.json({
-                        totalRecords: attendanceFiles.length,
-                        averageAttendance: averageAttendance,
-                        totalClasses: attendanceFiles.length
-                    });
-                }
-            });
-        });
-    });
+// Get all attendance dates
+app.get('/api/attendance/dates', async (req, res) => {
+  try {
+    const attendanceRecords = await Attendance.find().select('date -_id');
+    const dates = attendanceRecords.map(record => record.date);
+    res.json(dates.sort().reverse());
+  } catch (err) {
+    console.error('Error reading attendance dates:', err);
+    res.status(500).json({ error: 'Error reading attendance data' });
+  }
 });
 
-app.listen(port, () => {
-    console.log(`Server listening at http://localhost:${port}`);
+// Get attendance for a specific date
+app.get('/api/attendance/:date', async (req, res) => {
+  try {
+    const date = req.params.date;
+    const attendance = await Attendance.findOne({ date });
+    
+    if (attendance) {
+      res.json(attendance);
+    } else {
+      res.status(404).json({ error: 'Attendance record not found for this date' });
+    }
+  } catch (err) {
+    console.error('Error reading attendance:', err);
+    res.status(500).json({ error: 'Error reading attendance data' });
+  }
+});
+
+// Get all attendance records with summary
+app.get('/api/attendance', async (req, res) => {
+  try {
+    const allAttendance = await Attendance.find();
+    
+    const attendanceRecords = allAttendance.map(attendance => {
+      const presentCount = attendance.records.filter(r => r.status === 'Present').length;
+      const totalStudents = attendance.records.length;
+      const attendanceRate = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
+      
+      return {
+        date: attendance.date,
+        totalStudents,
+        present: presentCount,
+        absent: totalStudents - presentCount,
+        attendanceRate
+      };
+    });
+    
+    res.json(attendanceRecords.sort((a, b) => new Date(b.date) - new Date(a.date)));
+  } catch (err) {
+    console.error('Error reading attendance summary:', err);
+    res.status(500).json({ error: 'Error reading attendance data' });
+  }
+});
+
+// Search attendance records by student name
+app.get('/api/attendance/search/:studentName', async (req, res) => {
+  try {
+    const studentName = req.params.studentName.toLowerCase();
+    const allAttendance = await Attendance.find();
+    
+    const studentRecords = [];
+    
+    allAttendance.forEach(attendance => {
+      attendance.records.forEach(record => {
+        if (record.name.toLowerCase().includes(studentName)) {
+          studentRecords.push({
+            date: attendance.date,
+            name: record.name,
+            status: record.status,
+            timestamp: record.timestamp
+          });
+        }
+      });
+    });
+    
+    res.json(studentRecords.sort((a, b) => new Date(b.date) - new Date(a.date)));
+  } catch (err) {
+    console.error('Error searching attendance:', err);
+    res.status(500).json({ error: 'Error searching attendance data' });
+  }
+});
+
+// Get attendance statistics
+app.get('/api/attendance/stats/overview', async (req, res) => {
+  try {
+    const allAttendance = await Attendance.find();
+    
+    if (allAttendance.length === 0) {
+      return res.json({
+        totalRecords: 0,
+        averageAttendance: 0,
+        totalClasses: 0
+      });
+    }
+    
+    let totalPresent = 0;
+    let totalStudents = 0;
+    
+    allAttendance.forEach(attendance => {
+      const presentCount = attendance.records.filter(r => r.status === 'Present').length;
+      totalPresent += presentCount;
+      totalStudents += attendance.records.length;
+    });
+    
+    const averageAttendance = totalStudents > 0 ? Math.round((totalPresent / totalStudents) * 100) : 0;
+    
+    res.json({
+      totalRecords: allAttendance.length,
+      averageAttendance: averageAttendance,
+      totalClasses: allAttendance.length
+    });
+  } catch (err) {
+    console.error('Error reading attendance stats:', err);
+    res.status(500).json({ error: 'Error reading attendance statistics' });
+  }
+});
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Server listening at http://localhost:${port}`);
 });
