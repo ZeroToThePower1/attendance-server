@@ -536,11 +536,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// FIXED: 404 handler - use proper path pattern
-app.use('*', (req, res, next) => {
-  res.status(404).json({ error: 'Endpoint not found' });
+// FIXED: 404 handler - use proper approach
+app.use((req, res) => {
+  res.status(404).json({ 
+    error: 'Endpoint not found',
+    path: req.path,
+    method: req.method
+  });
 });
-
 
 process.on('SIGINT', async () => {
   console.log('Shutting down gracefully...');
@@ -552,6 +555,3 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode`);
   console.log(`Server listening at http://localhost:${port}`);
 });
-
-
-
