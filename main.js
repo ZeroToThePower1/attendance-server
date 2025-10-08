@@ -169,6 +169,41 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ⚠️ DANGER: Delete everything from database (use with extreme caution)
+app.delete('/api/nuke-database', async (req, res) => {
+  try {
+    // Confirm this is what you want
+    if (req.query.confirm !== 'yes-really-delete-everything') {
+      return res.status(400).json({ 
+        error: 'Add ?confirm=yes-really-delete-everything to confirm deletion',
+        warning: 'This will permanently delete ALL data' 
+      });
+    }
+
+    // Delete all students
+    const studentResult = await Student.deleteMany({});
+    
+    // Delete all attendance records
+    const attendanceResult = await Attendance.deleteMany({});
+    
+    console.log(`🚨 DATABASE WIPED: ${studentResult.deletedCount} students and ${attendanceResult.deletedCount} attendance records deleted`);
+    
+    res.json({
+      success: true,
+      message: 'Database completely wiped',
+      deleted: {
+        students: studentResult.deletedCount,
+        attendanceRecords: attendanceResult.deletedCount
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (err) {
+    console.error('Error wiping database:', err);
+    res.status(500).json({ error: 'Error wiping database' });
+  }
+});
+
 // Get all students with pagination
 app.get('/api/students', async (req, res) => {
   try {
@@ -208,114 +243,6 @@ app.post('/api/students', validateStudentsArray, async (req, res) => {
     } else {
       res.status(500).json({ error: 'Error saving students data' });
     }
-  }
-});
-
-// DELETE STUDENTS FEATURE - Multiple endpoints for flexibility
-
-// Delete all students
-app.delete('/api/students', async (req, res) => {
-  try {
-    const result = await Student.deleteMany({});
-    
-    res.json({ 
-      success: true, 
-      message: 'All students deleted successfully',
-      deletedCount: result.deletedCount,
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    console.error('Error deleting all students:', err);
-    res.status(500).json({ error: 'Error deleting all students' });
-  }
-});
-
-// Delete a specific student by ID
-app.delete('/api/students/:id', async (req, res) => {
-  try {
-    const studentId = req.params.id;
-    
-    // Try to delete by MongoDB _id first
-    let result = await Student.findByIdAndDelete(studentId);
-    
-    // If not found by _id, try by studentId field
-    if (!result) {
-      result = await Student.findOneAndDelete({ studentId: studentId });
-    }
-    
-    if (!result) {
-      return res.status(404).json({ 
-        error: 'Student not found',
-        message: `No student found with ID: ${studentId}`
-      });
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'Student deleted successfully',
-      deletedStudent: {
-        name: result.name,
-        studentId: result.studentId,
-        class: result.class
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    console.error('Error deleting student:', err);
-    res.status(500).json({ error: 'Error deleting student' });
-  }
-});
-
-// Delete multiple students by IDs
-app.delete('/api/students/batch/delete', async (req, res) => {
-  try {
-    const { studentIds } = req.body;
-    
-    if (!studentIds || !Array.isArray(studentIds)) {
-      return res.status(400).json({ 
-        error: 'studentIds array is required in request body' 
-      });
-    }
-
-    if (studentIds.length === 0) {
-      return res.status(400).json({ 
-        error: 'studentIds array cannot be empty' 
-      });
-    }
-
-    // Delete students by their _id or studentId
-    const deletePromises = studentIds.map(id => 
-      Student.findOneAndDelete({ 
-        $or: [{ _id: id }, { studentId: id }] 
-      })
-    );
-
-    const results = await Promise.all(deletePromises);
-    const deletedStudents = results.filter(result => result !== null);
-    
-    if (deletedStudents.length === 0) {
-      return res.status(404).json({ 
-        error: 'No students found with the provided IDs',
-        requestedCount: studentIds.length,
-        deletedCount: 0
-      });
-    }
-
-    res.json({ 
-      success: true, 
-      message: `${deletedStudents.length} student(s) deleted successfully`,
-      deletedCount: deletedStudents.length,
-      notFoundCount: studentIds.length - deletedStudents.length,
-      deletedStudents: deletedStudents.map(student => ({
-        name: student.name,
-        studentId: student.studentId,
-        class: student.class
-      })),
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    console.error('Error deleting multiple students:', err);
-    res.status(500).json({ error: 'Error deleting students' });
   }
 });
 
@@ -487,8 +414,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
+// FIXED: 404 handler - removed the problematic '*'
+app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
@@ -503,4 +430,5 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode`);
   console.log(`Server listening at http://localhost:${port}`);
 });
+
 
